@@ -1,65 +1,53 @@
 <template>
   <div 
     class="task-card"
+    :class="{ dragging: isDragging, [`priority-${task.priority}`]: true }"
     draggable="true"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
+    @click.stop="$emit('open-modal', task)"
   >
-    <div class="task-content" v-if="!isEditing">
-      <div class="task-header">
-        <FileText class="task-icon" :size="16" />
-        <p class="task-text">{{ task.text }}</p>
+    <div class="card-content">
+      <div class="priority-badge" :class="`badge-${task.priority}`">
+        <span class="badge-dot"></span>
+        {{ getPriorityLabel(task.priority) }}
       </div>
-      <div class="task-footer">
-        <div class="task-date">
-          <Calendar :size="12" />
-          <span>{{ formattedDate }}</span>
-        </div>
-        <div class="task-actions">
-          <button @click="startEdit" class="action-btn edit-btn" title="Edit">
-            <Edit2 :size="14" />
-          </button>
-          <button @click="confirmDelete" class="action-btn delete-btn" title="Delete">
-            <Trash2 :size="14" />
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <div v-else class="task-edit">
-      <input 
-        ref="editInput"
-        v-model="editText" 
-        type="text" 
-        class="edit-input"
-        @keyup.enter="saveEdit"
-        @keyup.esc="cancelEdit"
-        placeholder="Edit task..."
-      />
-      <div class="edit-actions">
-        <button @click="saveEdit" class="save-btn">Save</button>
-        <button @click="cancelEdit" class="cancel-btn">Cancel</button>
-      </div>
-    </div>
 
-    <!-- Delete Confirmation Modal -->
-    <Modal
-      v-if="showDeleteModal"
-      title="Delete Task"
-      :description='`Are you sure you want to delete "${task.text}"?`'
-      confirm-text="Delete"
-      cancel-text="Cancel"
-      type="danger"
-      @confirm="confirmDeleteTask"
-      @close="showDeleteModal = false"
-    />
+      <h4 class="task-title">{{ task.title }}</h4>
+
+      <p v-if="task.description" class="task-description">
+        {{ truncateText(task.description, 80) }}
+      </p>
+
+      <div v-if="task.dueDate" class="due-date" :class="{ overdue: isOverdue }">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        <span>{{ formatDueDate(task.dueDate) }}</span>
+      </div>
+
+      <div v-if="task.tags && task.tags.length" class="tags-container">
+        <span v-for="tag in task.tags.slice(0, 3)" :key="tag" class="tag">
+          #{{ tag }}
+        </span>
+        <span v-if="task.tags.length > 3" class="tag-more">+{{ task.tags.length - 3 }}</span>
+      </div>
+
+      <div v-if="task.checklist && task.checklist.length" class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: checklistProgress + '%' }"></div>
+        </div>
+        <span class="progress-text">{{ completedCount }}/{{ task.checklist.length }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue'
-import { FileText, Calendar, Edit2, Trash2 } from 'lucide-vue-next'
-import Modal from './Modal.vue'
+import { ref, computed } from 'vue'
 
 const props = defineProps({
   task: {
@@ -68,231 +56,212 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['delete', 'update'])
+const emit = defineEmits(['delete', 'update', 'open-modal'])
+const isDragging = ref(false)
 
-const isEditing = ref(false)
-const editText = ref('')
-const editInput = ref(null)
-const showDeleteModal = ref(false)
-
-// Format date
-const formattedDate = computed(() => {
-  const date = new Date(props.task.createdAt)
-  const now = new Date()
-  const diffTime = Math.abs(now - date)
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-  
-  if (diffDays === 0) {
-    return 'Today'
-  } else if (diffDays === 1) {
-    return 'Yesterday'
-  } else if (diffDays < 7) {
-    return `${diffDays} days ago`
-  } else {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  }
+const checklistProgress = computed(() => {
+  if (!props.task.checklist || props.task.checklist.length === 0) return 0
+  const completed = props.task.checklist.filter(item => item.completed).length
+  return (completed / props.task.checklist.length) * 100
 })
 
-// Drag-and-Drop handlers
+const completedCount = computed(() => {
+  if (!props.task.checklist) return 0
+  return props.task.checklist.filter(item => item.completed).length
+})
+
+const isOverdue = computed(() => {
+  if (!props.task.dueDate) return false
+  return new Date(props.task.dueDate) < new Date() && props.task.column !== 'done'
+})
+
+const getPriorityLabel = (priority) => {
+  const labels = { high: 'High', medium: 'Medium', low: 'Low' }
+  return labels[priority] || 'Medium'
+}
+
+const formatDueDate = (dateStr) => {
+  const date = new Date(dateStr)
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  
+  if (date.toDateString() === today.toDateString()) return 'Today'
+  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+const truncateText = (text, maxLength) => {
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength) + '...'
+}
+
 const onDragStart = (event) => {
+  isDragging.value = true
   event.dataTransfer.setData('text/plain', props.task.id)
   event.dataTransfer.effectAllowed = 'move'
-  event.target.classList.add('dragging')
 }
 
-const onDragEnd = (event) => {
-  event.target.classList.remove('dragging')
-}
-
-// Edit task
-const startEdit = () => {
-  editText.value = props.task.text
-  isEditing.value = true
-  nextTick(() => {
-    if (editInput.value) {
-      editInput.value.focus()
-    }
-  })
-}
-
-const saveEdit = () => {
-  if (editText.value.trim() && editText.value !== props.task.text) {
-    emit('update', { id: props.task.id, newText: editText.value })
-  }
-  cancelEdit()
-}
-
-const cancelEdit = () => {
-  isEditing.value = false
-  editText.value = ''
-}
-
-// Delete with modal confirmation
-const confirmDelete = () => {
-  showDeleteModal.value = true
-}
-
-const confirmDeleteTask = () => {
-  emit('delete', props.task.id)
-  showDeleteModal.value = false
+const onDragEnd = () => {
+  isDragging.value = false
 }
 </script>
 
 <style scoped>
 .task-card {
-  background-color: var(--card-bg);
-  border-radius: var(--border-radius);
-  padding: 12px;
-  box-shadow: var(--shadow-sm);
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
   transition: var(--transition);
-  cursor: grab;
   border: 1px solid var(--border);
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.task-card:active {
-  cursor: grabbing;
+.task-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -12px rgba(102, 126, 234, 0.25);
+  border-color: var(--btn-primary);
+  background: var(--bg-secondary);
 }
 
 .task-card.dragging {
   opacity: 0.5;
-  cursor: grabbing;
+  transform: scale(0.98);
 }
 
-.task-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--btn-primary);
-}
-
-.task-content {
+.card-content {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.task-header {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.task-icon {
-  color: var(--text-secondary);
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.task-text {
-  font-size: 14px;
-  line-height: 1.5;
-  word-wrap: break-word;
-  color: var(--text-primary);
-  flex: 1;
-}
-
-.task-footer {
-  display: flex;
-  justify-content: space-between;
+.priority-badge {
+  display: inline-flex;
   align-items: center;
+  gap: 6px;
   font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  width: fit-content;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.task-date {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-secondary);
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
-.task-actions {
-  display: flex;
-  gap: 4px;
+.badge-high {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.06));
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.action-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: var(--transition);
-  display: flex;
-  align-items: center;
-  color: var(--text-secondary);
+.badge-high .badge-dot {
+  background: #ef4444;
+  box-shadow: 0 0 4px #ef4444;
 }
 
-.action-btn:hover {
-  background-color: var(--hover-bg);
+.badge-medium {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.06));
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
-.edit-btn:hover {
-  color: var(--btn-primary);
+.badge-medium .badge-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 4px #f59e0b;
 }
 
-.delete-btn:hover {
-  color: var(--btn-danger);
+.badge-low {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.06));
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-.task-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.badge-low .badge-dot {
+  background: #10b981;
+  box-shadow: 0 0 4px #10b981;
 }
 
-.edit-input {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius);
-  font-size: 14px;
-  background-color: var(--bg-primary);
+.task-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
   color: var(--text-primary);
-  transition: var(--transition);
+  line-height: 1.4;
 }
 
-.edit-input:focus {
-  outline: none;
-  border-color: var(--btn-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+.task-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
 }
 
-.edit-actions {
+.due-date {
   display: flex;
-  gap: 8px;
-}
-
-.save-btn, .cancel-btn {
-  padding: 4px 12px;
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+
+.due-date.overdue {
+  color: #ef4444;
+}
+
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+  border-radius: 12px;
+  color: var(--btn-primary);
   font-weight: 500;
-  transition: var(--transition);
 }
 
-.save-btn {
-  background-color: var(--success);
-  color: white;
+.tag-more {
+  font-size: 11px;
+  padding: 3px 8px;
+  color: var(--text-secondary);
 }
 
-.save-btn:hover {
-  opacity: 0.9;
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.cancel-btn {
-  background-color: var(--bg-column);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
-.cancel-btn:hover {
-  background-color: var(--hover-bg);
+.progress-fill {
+  height: 100%;
+  background: var(--gradient-success);
+  border-radius: 4px;
+  transition: width 0.3s ease;
 }
 
-@media (max-width: 768px) {
-  .task-card {
-    padding: 10px;
-  }
+.progress-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 </style>

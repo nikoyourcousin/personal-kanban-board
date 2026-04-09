@@ -1,9 +1,12 @@
 <template>
   <div class="kanban-board">
     <div class="board-header">
-      <button @click="showAddModal = true" class="add-task-btn">
-        <Plus :size="16" />
-        <span>Add Task</span>
+      <button class="add-task-btn" @click="showAddModal = true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Task
       </button>
     </div>
     
@@ -16,6 +19,7 @@
         :tasks="kanbanStore.getTasksByColumnSorted(column)"
         :task-count="kanbanStore.getTaskCount(column)"
         @task-drop="handleTaskDrop"
+        @open-modal="handleOpenModal"
       />
     </div>
     
@@ -23,6 +27,14 @@
       v-if="showAddModal" 
       @close="showAddModal = false"
       @add="handleAddTask"
+    />
+
+    <TaskModal
+      v-if="selectedTask"
+      :task="selectedTask"
+      @close="selectedTask = null"
+      @update="handleUpdateTask"
+      @delete="handleDeleteTask"
     />
   </div>
 </template>
@@ -32,20 +44,33 @@ import { ref } from 'vue'
 import { useKanbanStore } from '../stores/kanbanStore'
 import KanbanColumn from './KanbanColumn.vue'
 import AddTaskModal from './AddTaskModal.vue'
-import { Plus } from 'lucide-vue-next'
+import TaskModal from './TaskModal.vue'
 
 const kanbanStore = useKanbanStore()
 const showAddModal = ref(false)
+const selectedTask = ref(null)
 
-const handleAddTask = (taskText) => {
-  if (taskText && taskText.trim()) {
-    kanbanStore.addTask(taskText)
-  }
+const handleAddTask = (taskData) => {
+  kanbanStore.addTask(taskData)
 }
 
 const handleTaskDrop = (event) => {
   const { taskId, targetColumn } = event
   kanbanStore.moveTask(taskId, targetColumn)
+}
+
+const handleOpenModal = (task) => {
+  selectedTask.value = task
+}
+
+const handleUpdateTask = (updatedData) => {
+  kanbanStore.updateTask(selectedTask.value.id, updatedData)
+  selectedTask.value = null
+}
+
+const handleDeleteTask = (taskId) => {
+  kanbanStore.deleteTask(taskId)
+  selectedTask.value = null
 }
 </script>
 
@@ -65,21 +90,41 @@ const handleTaskDrop = (event) => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background-color: var(--btn-primary);
+  background: var(--gradient-primary);
   color: white;
   border: none;
-  padding: 10px 20px;
-  border-radius: var(--border-radius);
+  padding: 12px 28px;
+  border-radius: 40px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.add-task-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.add-task-btn:hover::before {
+  width: 300px;
+  height: 300px;
 }
 
 .add-task-btn:hover {
-  background-color: var(--btn-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
 .columns-container {
