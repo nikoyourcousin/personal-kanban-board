@@ -206,4 +206,3 @@ For questions or feedback, please open an issue on GitHub.
 Take control of your tasks today. Start with one small task and build momentum.
 
 Made for personal productivity
-```
