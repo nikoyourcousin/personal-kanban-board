@@ -1,10 +1,6 @@
-name: Deploy to GitHub Pages
+name: Manual Deploy
 
 on:
-  push:
-    branches:
-      - master
-      - main
   workflow_dispatch:
 
 permissions:
@@ -25,7 +21,3 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          publish_branch: gh-pages
-          force_orphan: true
